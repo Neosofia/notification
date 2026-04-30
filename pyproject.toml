@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "neosofia-notification"
+version = "0.1.0"
+description = "Neosofia Notification Service - Contact form relay to Resend"
+requires-python = ">=3.12"
+authors = [{ name = "Neosofia", email = "platform@neosofia.tech" }]
+
+dependencies = [
+    "flask>=3.0.0",
+    "flask-cors>=4.0.0",
+    "flask-limiter>=3.5.0",
+    "flask-talisman>=1.1.0",
+    "resend>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "logenvelope",
+]
+
+[tool.uv.sources]
+logenvelope = { url = "https://github.com/Neosofia/sdk/releases/download/logenvelope-0.1.0/logenvelope-0.1.0-py3-none-any.whl" }
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0",
+    "requests>=2.33.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

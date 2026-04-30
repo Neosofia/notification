@@ -1,0 +1,195 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Neosofia Notification Service API",
+    "description": "Relays contact form submissions from the Neosofia corporate site to the configured inbox via Resend.",
+    "version": "0.1.0",
+    "contact": {
+      "name": "Neosofia"
+    },
+    "license": {
+      "name": "Apache-2.0"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8005",
+      "description": "Local development"
+    },
+    {
+      "url": "https://notification.neosofia.tech",
+      "description": "Production"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Email",
+      "description": "Outbound email relay"
+    },
+    {
+      "name": "Health",
+      "description": "Service liveness probe"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Liveness probe",
+        "description": "Returns 200 when the service is running. Exempt from rate limiting.",
+        "operationId": "healthCheck",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "example": {
+                  "status": "ok"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/emails": {
+      "post": {
+        "tags": ["Email"],
+        "summary": "Relay a contact email",
+        "description": "Validates the request, then relays an email to the configured destination inbox via Resend. The caller's address is set as `reply_to` so replies go directly to the sender.\n\n**Rate limits (per originating IP):** 5 per minute · 20 per hour · 30 per hour (global) · 200 per day (global).",
+        "operationId": "sendEmail",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailRequest"
+              },
+              "example": {
+                "from_email": "visitor@example.com",
+                "subject": "General inquiry",
+                "message": "Hello, I would like to learn more about your services."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Email accepted and relayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailResponse"
+                },
+                "example": {
+                  "status": "sent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error — one or more required fields are missing or empty",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "from_email is required; message is required"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "5 per 1 minute"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream Resend API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "Failed to relay message. Please try again later."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EmailRequest": {
+        "type": "object",
+        "required": ["from_email", "subject", "message"],
+        "properties": {
+          "from_email": {
+            "type": "string",
+            "format": "email",
+            "description": "Sender's email address; set as reply_to on the outbound email.",
+            "example": "visitor@example.com"
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Email subject. Prefixed with [Contact] on delivery.",
+            "example": "General inquiry"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Plain-text message body.",
+            "example": "Hello, I would like to learn more about your services."
+          }
+        }
+      },
+      "EmailResponse": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["sent"],
+            "description": "Confirmation that the email was accepted by Resend."
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["ok"]
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Human-readable error message."
+          }
+        }
+      }
+    }
+  }
+}
