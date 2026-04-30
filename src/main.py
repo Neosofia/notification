@@ -1,4 +1,5 @@
 import os
+import traceback
 from pathlib import Path
 
 import resend
@@ -100,7 +101,12 @@ def contact():
         log_event("contact_relayed", subject=subject)
         return jsonify({"status": "sent"}), 200
     except Exception as exc:
-        log_event("contact_relay_failed", error=str(exc))
+        log_event(
+            "contact_relay_failed",
+            error=str(exc),
+            exception_type=type(exc).__name__,
+            traceback=traceback.format_exc(),
+        )
         return jsonify({"error": "Failed to relay message. Please try again later."}), 502
 
 
