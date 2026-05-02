@@ -82,3 +82,5 @@ curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8005/api/emails \
    - `CORS_ORIGINS` — allowed origins (e.g. `https://neosofia.tech`)
 5. Railway auto-detects the `Dockerfile` and sets `PORT` automatically.
 
+The service exposes a built-in health endpoint at `/health`. Railway can use this endpoint to verify container readiness and liveness when configuring service probes.
+
