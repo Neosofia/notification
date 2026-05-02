@@ -110,11 +110,11 @@ def contact():
             "subject": f"[Contact] {body.subject}",
             "text": f"From: {body.from_email}\n\n{body.message}",
         })
-        log_event("contact_relayed", subject=body.subject)
+        log_event("email_relayed", subject=body.subject)
         return jsonify({"status": "sent"}), 200
     except Exception as exc:
         log_event(
-            "contact_relay_failed",
+            "email_relay_failed",
             error=str(exc),
             exception_type=type(exc).__name__,
             traceback=traceback.format_exc(),
