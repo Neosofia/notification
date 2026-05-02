@@ -1,3 +1,5 @@
+import logging
+import sys
 import traceback
 
 import resend
@@ -8,6 +10,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_talisman import Talisman
 from logenvelope.events import log_event
+from logenvelope.formatter import JSONFormatter
 from logenvelope.setup import setup_logging
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -15,6 +18,15 @@ from src.config import settings
 from src.models import ContactRequest
 
 setup_logging("notification")
+
+# Route all framework loggers to stdout with the same JSON formatter
+# so every log line from every part of the process is parseable.
+_json_handler = logging.StreamHandler(sys.stdout)
+_json_handler.setFormatter(JSONFormatter())
+for _name in ("notification", "werkzeug", "flask.app"):
+    _log = logging.getLogger(_name)
+    _log.handlers = [_json_handler]
+    _log.propagate = False
 
 RESEND_API_KEY = settings.resend_api_key
 NOTIFICATION_FROM = settings.notification_from

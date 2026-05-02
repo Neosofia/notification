@@ -7,5 +7,6 @@ timeout = settings.gunicorn_timeout
 keepalive = settings.gunicorn_keepalive
 preload_app = True
 accesslog = "-"
-errorlog = "-"
+errorlog = "/dev/stdout"
 loglevel = "info"
+logger_class = "src.gunicorn_logger.JSONLogger"
