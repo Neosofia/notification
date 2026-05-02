@@ -2,6 +2,7 @@ import traceback
 
 import resend
 from flask import Flask, jsonify, request
+from pydantic import ValidationError
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -11,6 +12,7 @@ from logenvelope.setup import setup_logging
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from src.config import settings
+from src.models import ContactRequest
 
 setup_logging("notification")
 
@@ -61,8 +63,9 @@ if not is_development and rate_limit_storage == "memory://":
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["200 per day", "30 per hour"],
+    default_limits=[] if is_development else ["200 per day", "30 per hour"],
     storage_uri=rate_limit_storage,
+    enabled=not is_development,
 )
 
 
@@ -81,31 +84,21 @@ def health():
 @limiter.limit("5 per minute")
 @limiter.limit("20 per hour")
 def contact():
-    payload = request.get_json(silent=True) or {}
-
-    from_email = (payload.get("from_email") or "").strip()
-    subject = (payload.get("subject") or "").strip()
-    message = (payload.get("message") or "").strip()
-
-    errors = []
-    if not from_email:
-        errors.append("from_email is required")
-    if not subject:
-        errors.append("subject is required")
-    if not message:
-        errors.append("message is required")
-    if errors:
-        return jsonify({"error": "; ".join(errors)}), 400
+    try:
+        body = ContactRequest.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as exc:
+        errors = "; ".join(e["msg"] for e in exc.errors())
+        return jsonify({"error": errors}), 400
 
     try:
         resend.Emails.send({
             "from": NOTIFICATION_FROM,
             "to": [NOTIFICATION_TO],
-            "reply_to": from_email,
-            "subject": f"[Contact] {subject}",
-            "text": f"From: {from_email}\n\n{message}",
+            "reply_to": body.from_email,
+            "subject": f"[Contact] {body.subject}",
+            "text": f"From: {body.from_email}\n\n{body.message}",
         })
-        log_event("contact_relayed", subject=subject)
+        log_event("contact_relayed", subject=body.subject)
         return jsonify({"status": "sent"}), 200
     except Exception as exc:
         log_event(
