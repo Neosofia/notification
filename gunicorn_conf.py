@@ -1,10 +1,10 @@
-import os
+from src.config import settings
 
-bind = "0.0.0.0:8005"
-workers = int(os.environ.get("WEB_CONCURRENCY", "2"))
-threads = int(os.environ.get("GUNICORN_THREADS", "2"))
-timeout = int(os.environ.get("GUNICORN_TIMEOUT", "30"))
-keepalive = int(os.environ.get("GUNICORN_KEEPALIVE", "2"))
+bind = f"0.0.0.0:{settings.port}"
+workers = settings.web_concurrency
+threads = settings.gunicorn_threads
+timeout = settings.gunicorn_timeout
+keepalive = settings.gunicorn_keepalive
 preload_app = True
 accesslog = "-"
 errorlog = "-"

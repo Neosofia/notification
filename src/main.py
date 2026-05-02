@@ -1,9 +1,6 @@
-import os
 import traceback
-from pathlib import Path
 
 import resend
-from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -13,32 +10,24 @@ from logenvelope.events import log_event
 from logenvelope.setup import setup_logging
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-_ENV_FILE = Path(__file__).parent.parent / ".local.env"
-if _ENV_FILE.exists():
-    load_dotenv(_ENV_FILE)
+from src.config import settings
 
 setup_logging("notification")
 
-def _require(name: str) -> str:
-    value = os.environ.get(name, "")
-    if not value:
-        raise RuntimeError(f"{name} environment variable is required")
-    return value
-
-
-RESEND_API_KEY = _require("RESEND_API_KEY")
-NOTIFICATION_FROM = _require("NOTIFICATION_FROM")
-NOTIFICATION_TO = _require("NOTIFICATION_TO")
-CORS_ORIGINS = _require("CORS_ORIGINS")
+RESEND_API_KEY = settings.resend_api_key
+NOTIFICATION_FROM = settings.notification_from
+NOTIFICATION_TO = settings.notification_to
+CORS_ORIGINS = settings.cors_origins
 
 resend.api_key = RESEND_API_KEY
 
 app = Flask(__name__)
 
 # Reject request bodies larger than 16 KiB to prevent body-flood DoS.
-app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_CONTENT_LENGTH", 16_384))
+app.config["MAX_CONTENT_LENGTH"] = settings.max_content_length
 
-is_development = os.environ.get("ENV", "production").lower() in ("development", "test")
+ENV = settings.env.lower()
+is_development = ENV in ("development", "test")
 
 if not is_development:
     # Trust exactly one upstream proxy hop (Railway's load balancer).
@@ -50,18 +39,36 @@ if not is_development:
         strict_transport_security=True,
         strict_transport_security_max_age=31536000,
         strict_transport_security_include_subdomains=True,
-        content_security_policy=False,
+        content_security_policy={"default-src": ["'none'"], "frame-ancestors": ["'none'"]},
         referrer_policy="strict-origin-when-cross-origin",
     )
 
-CORS(app, origins=CORS_ORIGINS.split(","))
+allowed_origins = settings.cors_origins
+if not allowed_origins:
+    raise RuntimeError("CORS_ORIGINS must contain at least one allowed origin")
+if "*" in allowed_origins:
+    raise RuntimeError("CORS_ORIGINS must not include wildcard '*'")
+
+CORS(app, origins=allowed_origins)
+
+rate_limit_storage = settings.rate_limit_storage_uri
+if not is_development and rate_limit_storage == "memory://":
+    log_event(
+        "rate_limit_weak_storage",
+        warning="Using in-memory rate limit storage in production",
+    )
 
 limiter = Limiter(
     get_remote_address,
     app=app,
     default_limits=["200 per day", "30 per hour"],
-    storage_uri=os.environ.get("RATELIMIT_STORAGE_URI", "memory://"),
+    storage_uri=rate_limit_storage,
 )
+
+
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    return jsonify({"error": "Request payload too large"}), 413
 
 
 @app.route("/health")
@@ -74,11 +81,11 @@ def health():
 @limiter.limit("5 per minute")
 @limiter.limit("20 per hour")
 def contact():
-    data = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True) or {}
 
-    from_email = (data.get("from_email") or "").strip()
-    subject = (data.get("subject") or "").strip()
-    message = (data.get("message") or "").strip()
+    from_email = (payload.get("from_email") or "").strip()
+    subject = (payload.get("subject") or "").strip()
+    message = (payload.get("message") or "").strip()
 
     errors = []
     if not from_email:
@@ -111,5 +118,4 @@ def contact():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8005))
-    app.run(host="0.0.0.0", port=port, debug=is_development)
+    app.run(host="0.0.0.0", port=settings.port, debug=is_development)

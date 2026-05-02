@@ -25,23 +25,24 @@ GitHub Pages (static site)
 | `NOTIFICATION_TO` | yes | — | Destination inbox |
 | `CORS_ORIGINS` | yes | — | Comma-separated allowed origins |
 | `PORT` | no | `8005` | HTTP port |
-| `ENV` | no | `production` | Set to `development` to disable HTTPS redirect and enable debug mode |
-| `RATELIMIT_STORAGE_URI` | no | `memory://` | Rate-limit backend; set to a Redis URI for multi-instance deployments |
+| `ENV` | no | `production` | Set to `development` to disable HTTPS redirect and enable debug mode. This service uses an auth-style env loader that resolves `ENV_FILE` or `ENV` to a configured env file, but direct environment variables are also accepted if neither is provided. |
+| `ENV_FILE` | no | — | Optional explicit env file path. If set, it takes precedence over `ENV`. |
+| `RATELIMIT_STORAGE_URI` | no | `memory://` | Rate-limit backend for local development. In production, using `memory://` is allowed but not recommended; prefer a durable backend such as `redis://...`. |
 
 ## Local development
 
 ```bash
-cp .local.env.example .local.env
-# fill in RESEND_API_KEY in .local.env
+cp .env.example .env
+# fill in RESEND_API_KEY in .env
 
 uv sync
 uv run python -m src.main
 ```
 
-The service listens on `http://localhost:8005`. `.local.env.example` ships with
+The service listens on `http://localhost:8005`. `.env.example` ships with
 `ENV=development` which disables the HTTPS redirect and enables Flask debug mode.
 
-Set `CORS_ORIGINS` in `.local.env` to include the corporate dev server so the
+Set `CORS_ORIGINS` in `.env` to include the corporate dev server so the
 browser allows the cross-origin request:
 
 ```
@@ -67,7 +68,7 @@ curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8005/api/emails \
 1. Create an account at <https://resend.com>.
 2. Add and verify your sending domain (`neosofia.tech`) under **Domains**.
 3. Create an API key under **API Keys** with **Sending access** only.
-4. Set the key as `RESEND_API_KEY` in Railway (and locally in `.local.env`).
+4. Set the key as `RESEND_API_KEY` in Railway (and locally in `.env`).
 5. Confirm your notification destination (`inquiry@neosofia.tech`) is a valid inbox.
 
 ## Railway setup
@@ -80,6 +81,7 @@ curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8005/api/emails \
    - `NOTIFICATION_TO` — destination email (e.g. `inquiry@neosofia.tech`)
    - `NOTIFICATION_FROM` — verified sender (e.g. `noreply@neosofia.tech`)
    - `CORS_ORIGINS` — allowed origins (e.g. `https://neosofia.tech`)
+   - `RATELIMIT_STORAGE_URI` — durable rate-limit backend in production (e.g. `redis://...`)
 5. Railway auto-detects the `Dockerfile` and sets `PORT` automatically.
 
 The service exposes a built-in health endpoint at `/health`. Railway can use this endpoint to verify container readiness and liveness when configuring service probes.
