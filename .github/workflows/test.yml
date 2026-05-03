@@ -34,3 +34,32 @@ jobs:
           NOTIFICATION_TO: inbox@example.com
           CORS_ORIGINS: http://localhost:3000
           ENV: test
+
+  integration:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker compose -f docker-compose.test.yml up -d --build --wait
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: pyproject.toml
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run integration tests
+        run: uv run pytest tests/integration/ -v --tb=short --no-cov
+
+      - name: Stop container
+        if: always()
+        run: docker compose -f docker-compose.test.yml down

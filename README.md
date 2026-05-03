@@ -25,9 +25,32 @@ GitHub Pages (static site)
 | `NOTIFICATION_TO` | yes | — | Destination inbox |
 | `CORS_ORIGINS` | yes | — | Comma-separated allowed origins |
 | `PORT` | no | `8005` | HTTP port |
-| `ENV` | no | `production` | Set to `development` to disable HTTPS redirect and enable debug mode. This service uses an auth-style env loader that resolves `ENV_FILE` or `ENV` to a configured env file, but direct environment variables are also accepted if neither is provided. |
-| `ENV_FILE` | no | — | Optional explicit env file path. If set, it takes precedence over `ENV`. |
-| `RATELIMIT_STORAGE_URI` | no | `memory://` | Rate-limit backend for local development. In production, using `memory://` is allowed but not recommended; prefer a durable backend such as `redis://...`. |
+| `ENV` | no | `production` | Set to `development` to disable HTTPS redirect and enable debug mode. |
+| `LOG_LEVEL` | no | `info` | Log level for this service and Gunicorn; set to `debug`, `info`, `warning`, or `error` as needed. |
+| `RATELIMIT_STORAGE_URI` | no | `memory://` | Rate-limit backend. Defaults to in-memory, which is fine for a single-instance deployment. A shared backend (e.g. `redis://...`) will be required when scaling to multiple instances or regions — tracked as future work. |
+| `TRUSTED_PROXY_HOPS` | no | `1` | Number of trusted upstream reverse-proxy hops. Set to match your deployment topology: `1` for a single load balancer (Railway, single Traefik), `2` for CDN + LB (Cloudflare + ALB), `0` to disable proxy header trust entirely (direct exposure or Netbird mesh with no LB). |
+
+## Testing
+
+### Unit tests
+
+```bash
+uv run pytest
+```
+
+Covers the full application stack via Flask's test client. `src/gunicorn_logger.py` is excluded from the coverage report — it is exercised by the container integration tests below.
+
+### Container integration tests
+
+Builds and runs the Docker image, then hits the live endpoints:
+
+```bash
+docker compose -f docker-compose.test.yml up -d --build --wait
+uv run pytest tests/integration/ -v --no-cov
+docker compose -f docker-compose.test.yml down
+```
+
+A valid-payload test returns `502` (stub key rejected by Resend) — that is the expected result and confirms the request traversed the full stack.
 
 ## Local development
 

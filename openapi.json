@@ -148,12 +148,14 @@
           "subject": {
             "type": "string",
             "minLength": 1,
-            "description": "Email subject. Prefixed with [Contact] on delivery.",
+            "maxLength": 200,
+            "description": "Email subject. Prefixed with [Contact] on delivery. Must not contain control characters.",
             "example": "General inquiry"
           },
           "message": {
             "type": "string",
             "minLength": 1,
+            "maxLength": 10000,
             "description": "Plain-text message body.",
             "example": "Hello, I would like to learn more about your services."
           }

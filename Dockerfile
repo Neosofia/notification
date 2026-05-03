@@ -1,4 +1,4 @@
-FROM python:3.12-alpine AS builder
+FROM python:3.12-alpine@sha256:236173eb74001afe2f60862de935b74fcbd00adfca247b2c27051a70a6a39a2d AS builder
 
 RUN apk add --no-cache gcc musl-dev libffi-dev
 
@@ -11,11 +11,9 @@ RUN uv lock && uv sync --no-dev --no-editable
 
 COPY src ./src
 
-FROM python:3.12-alpine
+FROM python:3.12-alpine@sha256:236173eb74001afe2f60862de935b74fcbd00adfca247b2c27051a70a6a39a2d
 
-RUN apk add --no-cache libffi
-
-RUN addgroup -S app && adduser -S -G app app
+RUN apk add --no-cache libffi && adduser -S -G app app
 
 WORKDIR /app
 

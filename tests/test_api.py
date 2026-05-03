@@ -145,3 +145,18 @@ def test_blank_message_returns_400(client, blank):
 def test_extra_fields_returns_400(client):
     resp = post_email(client, {**VALID_PAYLOAD, "unexpected": "value"})
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Request size limit
+# ---------------------------------------------------------------------------
+
+def test_oversized_body_returns_413(client):
+    # Exceeds MAX_CONTENT_LENGTH (16 KiB); Flask rejects before Pydantic runs.
+    oversized = "x" * 20_000
+    resp = client.post(
+        "/api/emails",
+        data=oversized,
+        content_type="application/json",
+    )
+    assert resp.status_code == 413

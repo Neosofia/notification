@@ -8,5 +8,5 @@ keepalive = settings.gunicorn_keepalive
 preload_app = True
 accesslog = "-"
 errorlog = "/dev/stdout"
-loglevel = "info"
-logger_class = "src.gunicorn_logger.JSONLogger"
+loglevel = settings.log_level
+logger_class = "src.gunicorn_logger:JSONLogger"

@@ -15,7 +15,6 @@ dependencies = [
     "flask-limiter>=3.5.0",
     "flask-talisman>=1.1.0",
     "resend>=2.0.0",
-    "python-dotenv>=1.0.0",
     "pydantic[email]>=2.8.0,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
     "logenvelope",
@@ -23,17 +22,22 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-logenvelope = { url = "https://github.com/Neosofia/sdk/releases/download/logenvelope-0.1.0/logenvelope-0.1.0-py3-none-any.whl" }
+logenvelope = { url = "https://github.com/Neosofia/sdk/releases/download/logenvelope-0.2.0/logenvelope-0.2.0-py3-none-any.whl" }
 
 [dependency-groups]
 dev = [
     "pytest>=7.4.0",
+    "pytest-cov>=7.1.0",
     "requests>=2.33.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+addopts = "--cov=src --cov-report=term-missing --cov-fail-under=80 --ignore=tests/integration"
+
+[tool.coverage.run]
+omit = ["src/gunicorn_logger.py"]
 
 [tool.ruff]
 line-length = 100

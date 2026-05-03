@@ -13,14 +13,16 @@ class Settings(BaseSettings):
     notification_from: EmailStr
     notification_to: EmailStr
     cors_origins_raw: str = Field(validation_alias="cors_origins")
+    log_level: str = Field("info")
     env: str = "production"
     rate_limit_storage_uri: str = "memory://"
+    trusted_proxy_hops: int = Field(1, ge=0)
     max_content_length: int = 16_384
     port: int = 8005
     web_concurrency: int = 2
     gunicorn_threads: int = 2
     gunicorn_timeout: int = 30
-    gunicorn_keepalive: int = 2
+    gunicorn_keepalive: int = 5
 
     model_config = SettingsConfigDict(
         env_file=".env",
