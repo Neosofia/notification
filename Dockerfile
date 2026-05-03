@@ -13,7 +13,7 @@ COPY src ./src
 
 FROM python:3.12-alpine@sha256:236173eb74001afe2f60862de935b74fcbd00adfca247b2c27051a70a6a39a2d
 
-RUN apk add --no-cache libffi && adduser -S -G app app
+RUN apk add --no-cache libffi && addgroup -S app && adduser -S -G app app
 
 WORKDIR /app
 
