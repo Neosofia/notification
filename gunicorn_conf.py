@@ -9,4 +9,4 @@ preload_app = True
 accesslog = "-"
 errorlog = "/dev/stdout"
 loglevel = settings.log_level
-logger_class = "src.gunicorn_logger:JSONLogger"
+logger_class = "src.gunicorn_logger.JSONLogger"

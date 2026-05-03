@@ -6,8 +6,8 @@ WORKDIR /repo
 
 RUN pip install --no-cache-dir uv
 
-COPY pyproject.toml ./
-RUN uv lock && uv sync --no-dev --no-editable
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-editable
 
 COPY src ./src
 
