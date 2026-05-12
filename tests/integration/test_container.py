@@ -10,8 +10,19 @@ suite and is therefore excluded from the unit-test coverage report.
 """
 
 import os
-
+import subprocess
+import pytest
 import requests
+
+@pytest.fixture(scope="session", autouse=True)
+def run_docker_compose():
+    if os.environ.get("RUN_DOCKER_TESTS") == "1":
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+        subprocess.run(["docker", "compose", "-f", "docker-compose.test.yml", "up", "-d", "--build", "--wait"], cwd=repo_root, check=True)
+        yield
+        subprocess.run(["docker", "compose", "-f", "docker-compose.test.yml", "down"], cwd=repo_root, check=True)
+    else:
+        yield
 
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:8005").rstrip("/")
 
