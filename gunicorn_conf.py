@@ -1,3 +1,4 @@
+from logenvelope.gunicorn import JSONLogger
 from src.config import settings
 
 bind = f"0.0.0.0:{settings.port}"
@@ -9,4 +10,4 @@ preload_app = True
 accesslog = "-"
 errorlog = "/dev/stdout"
 loglevel = settings.log_level
-logger_class = "src.gunicorn_logger.JSONLogger"
+logger_class = JSONLogger
