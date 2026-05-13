@@ -40,17 +40,15 @@ uv run pytest
 
 Covers the full application stack via Flask's test client. `src/gunicorn_logger.py` is excluded from the coverage report — it is exercised by the container integration tests below.
 
-### Container integration tests
+### Integration tests
 
-Builds and runs the Docker image, then hits the live endpoints:
+Run integration tests locally with uv. These tests exercise the real Flask application and its endpoints.
 
 ```bash
-docker compose -f docker-compose.test.yml up -d --build --wait
 uv run pytest tests/integration/ -v --no-cov
-docker compose -f docker-compose.test.yml down
 ```
 
-A valid-payload test returns `502` (stub key rejected by Resend) — that is the expected result and confirms the request traversed the full stack.
+A valid-payload test may return `502` when Resend rejects the stub API key; that is expected and confirms the request reached the full stack.
 
 ## Local development
 
