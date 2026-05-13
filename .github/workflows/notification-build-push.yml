@@ -27,5 +27,3 @@ jobs:
       image_name: ghcr.io/${{ github.repository_owner }}/notification
       tag_prefix: notification
       cache_scope: notification
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
