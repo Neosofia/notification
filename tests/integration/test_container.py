@@ -16,6 +16,8 @@ import requests
 import pytest
 from testcontainers.core.container import DockerContainer
 
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
 IMAGE_TAG = "notification-svc-test:latest"
 
 @pytest.fixture(scope="session", autouse=True)
