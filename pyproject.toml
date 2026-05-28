@@ -36,6 +36,10 @@ dev = [
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "--cov=src --cov-report=term-missing --cov-fail-under=80 --ignore=tests/integration"
+markers = [
+    "integration: container-based HTTP integration tests",
+    "slow: long-running container or end-to-end integration tests",
+]
 
 [tool.coverage.run]
 omit = ["src/gunicorn_logger.py"]
