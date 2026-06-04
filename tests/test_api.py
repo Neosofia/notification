@@ -10,6 +10,7 @@ Covers:
 """
 
 import json
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
@@ -40,7 +41,10 @@ def post_email(client, payload):
 def test_health(client):
     resp = client.get("/health")
     assert resp.status_code == 200
-    assert resp.get_json() == {"status": "ok"}
+    assert resp.get_json() == {
+        "status": "ok",
+        "version": version("neosofia-notification"),
+    }
 
 
 # ---------------------------------------------------------------------------

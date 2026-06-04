@@ -76,7 +76,9 @@ VALID_PAYLOAD = {
 def test_health(app_container):
     resp = requests.get(f"{app_container}/health", timeout=5)
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body.get("version")
 
 def test_valid_payload_returns_200_or_502(app_container):
     """Valid payload returns 200 (live Resend key) or 502 (stub/invalid key).
