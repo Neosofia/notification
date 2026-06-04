@@ -18,6 +18,7 @@ RUN apk add --no-cache libffi && addgroup -S app && adduser -S -G app app
 WORKDIR /app
 
 COPY --from=builder /repo/.venv /repo/.venv
+COPY pyproject.toml ./pyproject.toml
 COPY src ./src
 COPY gunicorn_conf.py ./gunicorn_conf.py
 

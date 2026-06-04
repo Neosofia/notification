@@ -12,6 +12,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from src.config import settings
 from src.models import ContactRequest
+from src.version import service_version
 
 setup_logging("notification", settings.log_level)
 
@@ -73,7 +74,7 @@ def request_entity_too_large(error):
 @app.route("/health")
 @limiter.exempt
 def health():
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "version": service_version()})
 
 
 @app.route("/api/emails", methods=["POST"])
