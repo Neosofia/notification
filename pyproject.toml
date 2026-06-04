@@ -42,7 +42,10 @@ markers = [
 ]
 
 [tool.coverage.run]
-omit = ["src/gunicorn_logger.py"]
+omit = [
+    "scripts/*",
+    "src/gunicorn_logger.py",
+]
 
 [tool.ruff]
 line-length = 100
