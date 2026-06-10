@@ -376,10 +376,10 @@ wheels = [
 
 [[package]]
 name = "logenvelope"
-version = "0.3.0"
-source = { url = "https://github.com/Neosofia/sdk/releases/download/logenvelope-0.3.0/logenvelope-0.3.0-py3-none-any.whl" }
+version = "0.3.3"
+source = { url = "https://github.com/Neosofia/sdk/releases/download/logenvelope/v0.3.3/logenvelope-0.3.3-py3-none-any.whl" }
 wheels = [
-    { url = "https://github.com/Neosofia/sdk/releases/download/logenvelope-0.3.0/logenvelope-0.3.0-py3-none-any.whl", hash = "sha256:91e7b7901f948771049dd4387ba47a4b40ab8f19d249640f0eda0461a5f7f9a6" },
+    { url = "https://github.com/Neosofia/sdk/releases/download/logenvelope/v0.3.3/logenvelope-0.3.3-py3-none-any.whl", hash = "sha256:f35761bcc80ee5e8be8f47ee665fa27b1b0453aa279a19f1ee0911ffefe3ec0b" },
 ]
 
 [[package]]
@@ -476,7 +476,7 @@ requires-dist = [
     { name = "flask-limiter", specifier = ">=3.5.0" },
     { name = "flask-talisman", specifier = ">=1.1.0" },
     { name = "gunicorn", specifier = ">=21.0.0" },
-    { name = "logenvelope", url = "https://github.com/Neosofia/sdk/releases/download/logenvelope-0.3.0/logenvelope-0.3.0-py3-none-any.whl" },
+    { name = "logenvelope", url = "https://github.com/Neosofia/sdk/releases/download/logenvelope/v0.3.3/logenvelope-0.3.3-py3-none-any.whl" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.8.0,<3.0.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0,<3.0.0" },
     { name = "resend", specifier = ">=2.0.0" },
