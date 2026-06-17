@@ -47,6 +47,12 @@ def test_health(client):
     }
 
 
+def test_health_allows_configured_cors_origin(client):
+    resp = client.get("/health", headers={"Origin": "http://localhost:3000"})
+    assert resp.status_code == 200
+    assert resp.headers.get("Access-Control-Allow-Origin") == "http://localhost:3000"
+
+
 # ---------------------------------------------------------------------------
 # Happy path
 # ---------------------------------------------------------------------------

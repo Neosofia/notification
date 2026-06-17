@@ -47,8 +47,15 @@ Talisman(
     referrer_policy="strict-origin-when-cross-origin",
 )
 
-# Restrict CORS to API routes only; /health needs no cross-origin access.
-CORS(app, resources={r"/api/*": {"origins": settings.cors_origins}})
+# /health is probed cross-origin by the CDP operator dashboard; /api/* by corporate contact forms.
+CORS(
+    app,
+    resources={
+        r"/api/*": {"origins": settings.cors_origins},
+        r"/health": {"origins": settings.cors_origins},
+    },
+    max_age=86400,
+)
 
 rate_limit_storage = settings.rate_limit_storage_uri
 if not is_development and rate_limit_storage == "memory://":
