@@ -67,7 +67,7 @@ Set `CORS_ORIGINS` in `.env` to include the corporate dev server so the
 browser allows the cross-origin request:
 
 ```
-CORS_ORIGINS=http://localhost:4173,https://neosofia.tech
+CORS_ORIGINS=http://localhost:5173,http://localhost:4173,https://neosofia.tech
 ```
 
 Set the matching var in the corporate site's `.env`:
