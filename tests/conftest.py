@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 
 def _base64url_uint(value: int) -> str:
-    raw = value.to_bytes((value.bit_length() + 7) // 8, "big")
+    raw = value.to_bytes(max(1, (value.bit_length() + 7) // 8), "big")
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
 

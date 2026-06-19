@@ -65,13 +65,13 @@ class Settings(BaseSettings):
 
     @computed_field  # type: ignore[misc]
     @property
-    def platform_jwt_allowed_subjects(self) -> List[str]:
-        return _split_csv(self.platform_jwt_allowed_subjects_raw)
+    def platform_jwt_allowed_subjects(self) -> frozenset[str]:
+        return frozenset(_split_csv(self.platform_jwt_allowed_subjects_raw))
 
     @computed_field  # type: ignore[misc]
     @property
-    def platform_email_allowed_domains(self) -> List[str]:
-        return [domain.lower() for domain in _split_csv(self.platform_email_allowed_domains_raw)]
+    def platform_email_allowed_domains(self) -> frozenset[str]:
+        return frozenset(domain.lower() for domain in _split_csv(self.platform_email_allowed_domains_raw))
 
 
 settings = Settings()  # type: ignore[call-arg]

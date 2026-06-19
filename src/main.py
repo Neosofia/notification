@@ -160,7 +160,12 @@ def _require_platform_jwt(view):
         try:
             claims = _decode_platform_token(token)
         except jwt.InvalidTokenError as exc:
-            return jsonify({"error": str(exc)}), 401
+            log_event(
+                "platform_email.auth_failed",
+                message="Rejected invalid platform bearer token",
+                exception_type=type(exc).__name__,
+            )
+            return jsonify({"error": "Invalid bearer token"}), 401
 
         subject = claims.get("sub")
         if not isinstance(subject, str) or subject not in settings.platform_jwt_allowed_subjects:
