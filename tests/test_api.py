@@ -234,20 +234,28 @@ def test_oversized_body_returns_413(client):
 def test_platform_email_requires_bearer_token(client):
     resp = post_platform_email(client, VALID_PLATFORM_PAYLOAD)
     assert resp.status_code == 401
-    assert resp.get_json() == {"error": "Missing bearer token"}
+    assert resp.get_json()["error"] == "unauthenticated"
+    assert resp.get_json()["detail"].startswith("Missing or invalid")
 
 
 def test_platform_email_rejects_invalid_token(client):
     resp = post_platform_email(client, VALID_PLATFORM_PAYLOAD, token="not-a-jwt")
     assert resp.status_code == 401
-    assert "error" in resp.get_json()
+    assert resp.get_json() == {"error": "unauthenticated", "detail": "Invalid token"}
+
+
+def test_platform_email_rejects_wrong_issuer(client, platform_private_key):
+    token = build_platform_token(platform_private_key, iss="https://wrong.example")
+    resp = post_platform_email(client, VALID_PLATFORM_PAYLOAD, token=token)
+    assert resp.status_code == 401
+    assert resp.get_json() == {"error": "unauthenticated", "detail": "Invalid token"}
 
 
 def test_platform_email_rejects_unpermitted_subject(client, platform_private_key):
     token = build_platform_token(platform_private_key, subject="frontend-app")
     resp = post_platform_email(client, VALID_PLATFORM_PAYLOAD, token=token)
     assert resp.status_code == 403
-    assert resp.get_json() == {"error": "JWT subject is not permitted"}
+    assert resp.get_json() == {"error": "forbidden", "detail": "JWT subject is not permitted"}
 
 
 def test_platform_email_rejects_disallowed_destination(client, platform_private_key):

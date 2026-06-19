@@ -1,6 +1,8 @@
 import json
 from functools import lru_cache, wraps
 
+from authentication_in_the_middle.decorators import with_authentication
+from authentication_in_the_middle.logging import log_authentication_failed
 import jwt
 import resend
 from resend.http_client_requests import RequestsClient
@@ -116,7 +118,7 @@ def _platform_jwt_configured() -> bool:
     )
 
 
-def _decode_platform_token(token: str) -> dict[str, object]:
+def _platform_signing_key(token: str) -> object:
     header = jwt.get_unverified_header(token)
     kid = header.get("kid")
     if not isinstance(kid, str) or not kid:
@@ -125,57 +127,69 @@ def _decode_platform_token(token: str) -> dict[str, object]:
     key = _platform_jwk_keys().get(kid)
     if key is None:
         raise jwt.InvalidTokenError("JWT signing key is not trusted")
-
-    return jwt.decode(
-        token,
-        key=key,
-        algorithms=["RS256"],
-        audience=settings.platform_jwt_audience,
-        issuer=settings.platform_jwt_issuer,
-        options={"require": ["exp", "iat", "iss", "aud", "sub"]},
-    )
-
-
-def _extract_bearer_token() -> str | None:
-    authorization = request.headers.get("Authorization", "")
-    scheme, _, token = authorization.partition(" ")
-    if scheme != "Bearer" or not token:
-        return None
-    return token.strip()
+    return key
 
 
 def _platform_rate_limit_key() -> str:
     return getattr(g, "platform_subject", get_remote_address())
 
 
-def _require_platform_jwt(view):
+def _authorize_platform_subject(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
-        token = _extract_bearer_token()
-        if token is None:
-            return jsonify({"error": "Missing bearer token"}), 401
-        if not _platform_jwt_configured():
-            return jsonify({"error": "Protected relay is not configured"}), 503
-
-        try:
-            claims = _decode_platform_token(token)
-        except jwt.InvalidTokenError as exc:
-            log_event(
-                "platform_email.auth_failed",
-                message="Rejected invalid platform bearer token",
-                exception_type=type(exc).__name__,
+        claims = getattr(g, "jwt_claims", {})
+        issuer = claims.get("iss")
+        if issuer != settings.platform_jwt_issuer:
+            log_authentication_failed(
+                reason="issuer_invalid",
+                status_code=401,
+                route=view.__name__,
+                error_type="InvalidIssuerError",
             )
-            return jsonify({"error": "Invalid bearer token"}), 401
-
+            return jsonify({"error": "unauthenticated", "detail": "Invalid token"}), 401
         subject = claims.get("sub")
         if not isinstance(subject, str) or subject not in settings.platform_jwt_allowed_subjects:
-            return jsonify({"error": "JWT subject is not permitted"}), 403
-
+            return jsonify({"error": "forbidden", "detail": "JWT subject is not permitted"}), 403
         g.platform_subject = subject
         g.platform_claims = claims
         return view(*args, **kwargs)
 
     return wrapped
+
+
+def _authenticate_platform_request(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not _platform_jwt_configured():
+            return jsonify({"error": "Protected relay is not configured"}), 503
+
+        signing_key = ""
+        authorization = request.headers.get("Authorization", "")
+        if authorization.startswith("Bearer "):
+            token = authorization[7:].strip()
+            try:
+                signing_key = _platform_signing_key(token)
+            except jwt.InvalidTokenError as exc:
+                log_authentication_failed(
+                    reason="token_invalid",
+                    status_code=401,
+                    route=view.__name__,
+                    error_type=type(exc).__name__,
+                )
+                return jsonify({"error": "unauthenticated", "detail": "Invalid token"}), 401
+
+        authenticated_view = with_authentication(
+            public_key=signing_key,
+            audience=settings.platform_jwt_audience,
+            enforce_active_actor=False,
+        )(view)
+        return authenticated_view(*args, **kwargs)
+
+    return wrapped
+
+
+def _require_platform_jwt(view):
+    return _authenticate_platform_request(_authorize_platform_subject(view))
 
 
 def _send_email(to_email: str, subject: str, message: str, reply_to: str | None = None):
