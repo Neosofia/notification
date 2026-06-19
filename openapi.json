@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Neosofia Notification Service API",
-    "description": "Relays contact form submissions from the Neosofia corporate site to the configured inbox via Resend.",
+    "description": "Relays public contact-form mail to the configured inbox and protected platform mail to caller-approved destinations via Resend.",
     "version": "0.1.0",
     "contact": {
       "name": "Neosofia"
@@ -131,9 +131,122 @@
           }
         }
       }
+    },
+    "/api/v1/emails": {
+      "post": {
+        "tags": ["Email"],
+        "summary": "Relay a protected platform email",
+        "description": "Requires a valid platform service JWT, validates the destination against the configured allowlist, and relays the message via Resend.\n\n**Rate limits (per authenticated subject):** 30 per minute · 120 per hour.",
+        "operationId": "sendPlatformEmail",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformEmailRequest"
+              },
+              "example": {
+                "to_email": "alerts@example.com",
+                "subject": "Escalation",
+                "message": "Open the dashboard for details.",
+                "from_email": "workflow@example.com",
+                "reply_to": "oncall@example.com",
+                "message_type": "clinical-alert"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Email accepted and relayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailResponse"
+                },
+                "example": {
+                  "status": "sent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error — malformed request or disallowed destination",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid platform JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "JWT subject is not permitted to call the relay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream Resend API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Protected relay is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
     "schemas": {
       "EmailRequest": {
         "type": "object",
@@ -158,6 +271,51 @@
             "maxLength": 10000,
             "description": "Plain-text message body.",
             "example": "Hello, I would like to learn more about your services."
+          }
+        }
+      },
+      "PlatformEmailRequest": {
+        "type": "object",
+        "required": ["to_email", "subject", "message"],
+        "properties": {
+          "to_email": {
+            "type": "string",
+            "format": "email",
+            "description": "Destination inbox for the protected relay. The domain must be allowlisted by PLATFORM_EMAIL_ALLOWED_DOMAINS.",
+            "example": "alerts@example.com"
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Email subject. Prefixed with the message_type on delivery. Must not contain control characters.",
+            "example": "Escalation"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000,
+            "description": "Plain-text message body.",
+            "example": "Open the dashboard for details."
+          },
+          "from_email": {
+            "type": "string",
+            "format": "email",
+            "description": "Optional sender email included in the relayed message body."
+          },
+          "reply_to": {
+            "type": "string",
+            "format": "email",
+            "description": "Optional reply-to address applied to the outbound email."
+          },
+          "message_type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "description": "Optional delivery and logging classifier used as the subject prefix.",
+            "default": "platform",
+            "example": "clinical-alert"
           }
         }
       },

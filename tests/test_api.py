@@ -10,15 +10,26 @@ Covers:
 """
 
 import json
+from datetime import UTC, datetime, timedelta
 from importlib.metadata import version
 from pathlib import Path
 
+import jwt
 import pytest
 
 VALID_PAYLOAD = {
     "from_email": "visitor@example.com",
     "subject": "General inquiry",
     "message": "Hello, I would like to learn more.",
+}
+
+VALID_PLATFORM_PAYLOAD = {
+    "to_email": "alerts@example.com",
+    "from_email": "workflow@example.com",
+    "reply_to": "oncall@example.com",
+    "subject": "Escalation",
+    "message": "Open the dashboard for details.",
+    "message_type": "clinical-alert",
 }
 
 
@@ -32,6 +43,31 @@ def post_email(client, payload):
         data=json.dumps(payload),
         content_type="application/json",
     )
+
+
+def post_platform_email(client, payload, token=None):
+    headers = {}
+    if token is not None:
+        headers["Authorization"] = "Bearer " + token
+    return client.post(
+        "/api/v1/emails",
+        data=json.dumps(payload),
+        content_type="application/json",
+        headers=headers,
+    )
+
+
+def build_platform_token(private_key, subject="care-episode", **claims):
+    now = datetime.now(UTC)
+    payload = {
+        "iss": "https://auth.test.neosofia",
+        "aud": "notification",
+        "sub": subject,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=5)).timestamp()),
+        **claims,
+    }
+    return jwt.encode(payload, private_key, algorithm="RS256", headers={"kid": "test-kid"})
 
 
 # ---------------------------------------------------------------------------
@@ -57,10 +93,19 @@ def test_health_allows_configured_cors_origin(client):
 # Happy path
 # ---------------------------------------------------------------------------
 
-def test_valid_payload_returns_200(client):
+def test_valid_payload_returns_200(client, resend_messages):
     resp = post_email(client, VALID_PAYLOAD)
     assert resp.status_code == 200
     assert resp.get_json() == {"status": "sent"}
+    assert resend_messages == [
+        {
+            "from": "noreply@example.com",
+            "to": ["inbox@example.com"],
+            "reply_to": "visitor@example.com",
+            "subject": "[Contact] General inquiry",
+            "text": "From: visitor@example.com\n\nHello, I would like to learn more.",
+        }
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -68,24 +113,33 @@ def test_valid_payload_returns_200(client):
 # ---------------------------------------------------------------------------
 
 def test_schema_matches_openapi():
-    from src.models import ContactRequest
+    from src.models import ContactRequest, PlatformEmailRequest
 
     openapi = json.loads(
         (Path(__file__).parent.parent / "openapi.json").read_text()
     )
     email_request = openapi["components"]["schemas"]["EmailRequest"]
+    platform_email_request = openapi["components"]["schemas"]["PlatformEmailRequest"]
 
     model_schema = ContactRequest.model_json_schema()
+    platform_model_schema = PlatformEmailRequest.model_json_schema()
 
     # Required fields must match exactly
     assert set(email_request["required"]) == set(model_schema.get("required", [])), (
         "openapi.json EmailRequest.required does not match ContactRequest fields"
+    )
+    assert set(platform_email_request["required"]) == set(platform_model_schema.get("required", [])), (
+        "openapi.json PlatformEmailRequest.required does not match PlatformEmailRequest fields"
     )
 
     # Every property in the OpenAPI schema must exist in the Pydantic model
     for field in email_request["properties"]:
         assert field in model_schema["properties"], (
             f"openapi.json field '{field}' is missing from ContactRequest"
+        )
+    for field in platform_email_request["properties"]:
+        assert field in platform_model_schema["properties"], (
+            f"openapi.json field '{field}' is missing from PlatformEmailRequest"
         )
 
 
@@ -170,3 +224,53 @@ def test_oversized_body_returns_413(client):
         content_type="application/json",
     )
     assert resp.status_code == 413
+
+
+# ---------------------------------------------------------------------------
+# Protected platform relay
+# ---------------------------------------------------------------------------
+
+def test_platform_email_requires_bearer_token(client):
+    resp = post_platform_email(client, VALID_PLATFORM_PAYLOAD)
+    assert resp.status_code == 401
+    assert resp.get_json() == {"error": "Missing bearer token"}
+
+
+def test_platform_email_rejects_invalid_token(client):
+    resp = post_platform_email(client, VALID_PLATFORM_PAYLOAD, token="not-a-jwt")
+    assert resp.status_code == 401
+    assert "error" in resp.get_json()
+
+
+def test_platform_email_rejects_unpermitted_subject(client, platform_private_key):
+    token = build_platform_token(platform_private_key, subject="frontend-app")
+    resp = post_platform_email(client, VALID_PLATFORM_PAYLOAD, token=token)
+    assert resp.status_code == 403
+    assert resp.get_json() == {"error": "JWT subject is not permitted"}
+
+
+def test_platform_email_rejects_disallowed_destination(client, platform_private_key):
+    token = build_platform_token(platform_private_key)
+    resp = post_platform_email(
+        client,
+        {**VALID_PLATFORM_PAYLOAD, "to_email": "alerts@outside.example.net"},
+        token=token,
+    )
+    assert resp.status_code == 400
+    assert resp.get_json() == {"error": "Destination email is not permitted"}
+
+
+def test_platform_email_relays_to_caller_supplied_destination(client, platform_private_key, resend_messages):
+    token = build_platform_token(platform_private_key, subject="ops-bot")
+    resp = post_platform_email(client, VALID_PLATFORM_PAYLOAD, token=token)
+    assert resp.status_code == 200
+    assert resp.get_json() == {"status": "sent"}
+    assert resend_messages == [
+        {
+            "from": "noreply@example.com",
+            "to": ["alerts@example.com"],
+            "reply_to": "oncall@example.com",
+            "subject": "[clinical-alert] Escalation",
+            "text": "From: workflow@example.com\nReply-To: oncall@example.com\n\nOpen the dashboard for details.",
+        }
+    ]

@@ -1,6 +1,10 @@
+import json
+from functools import lru_cache, wraps
+
+import jwt
 import resend
 from resend.http_client_requests import RequestsClient
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request
 from pydantic import ValidationError
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -11,7 +15,7 @@ from logenvelope.setup import setup_logging
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from src.config import settings
-from src.models import ContactRequest
+from src.models import ContactRequest, PlatformEmailRequest
 from src.version import service_version
 
 setup_logging("notification", settings.log_level)
@@ -84,6 +88,103 @@ def health():
     return jsonify({"status": "ok", "version": service_version()})
 
 
+def _email_domain(address: str) -> str:
+    return address.rsplit("@", 1)[1].lower()
+
+
+@lru_cache
+def _platform_jwk_keys() -> dict[str, object]:
+    if not settings.platform_jwt_jwks_json:
+        return {}
+
+    jwks = json.loads(settings.platform_jwt_jwks_json)
+    keys: dict[str, object] = {}
+    for jwk in jwks.get("keys", []):
+        kid = jwk.get("kid")
+        if isinstance(kid, str) and kid:
+            keys[kid] = jwt.PyJWK.from_dict(jwk).key
+    return keys
+
+
+def _platform_jwt_configured() -> bool:
+    return bool(
+        settings.platform_jwt_issuer
+        and settings.platform_jwt_audience
+        and settings.platform_jwt_allowed_subjects
+        and settings.platform_email_allowed_domains
+        and _platform_jwk_keys()
+    )
+
+
+def _decode_platform_token(token: str) -> dict[str, object]:
+    header = jwt.get_unverified_header(token)
+    kid = header.get("kid")
+    if not isinstance(kid, str) or not kid:
+        raise jwt.InvalidTokenError("JWT is missing a kid header")
+
+    key = _platform_jwk_keys().get(kid)
+    if key is None:
+        raise jwt.InvalidTokenError("JWT signing key is not trusted")
+
+    return jwt.decode(
+        token,
+        key=key,
+        algorithms=["RS256"],
+        audience=settings.platform_jwt_audience,
+        issuer=settings.platform_jwt_issuer,
+        options={"require": ["exp", "iat", "iss", "aud", "sub"]},
+    )
+
+
+def _extract_bearer_token() -> str | None:
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme != "Bearer" or not token:
+        return None
+    return token.strip()
+
+
+def _platform_rate_limit_key() -> str:
+    return getattr(g, "platform_subject", get_remote_address())
+
+
+def _require_platform_jwt(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        token = _extract_bearer_token()
+        if token is None:
+            return jsonify({"error": "Missing bearer token"}), 401
+        if not _platform_jwt_configured():
+            return jsonify({"error": "Protected relay is not configured"}), 503
+
+        try:
+            claims = _decode_platform_token(token)
+        except jwt.InvalidTokenError as exc:
+            return jsonify({"error": str(exc)}), 401
+
+        subject = claims.get("sub")
+        if not isinstance(subject, str) or subject not in settings.platform_jwt_allowed_subjects:
+            return jsonify({"error": "JWT subject is not permitted"}), 403
+
+        g.platform_subject = subject
+        g.platform_claims = claims
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def _send_email(to_email: str, subject: str, message: str, reply_to: str | None = None):
+    payload = {
+        "from": settings.notification_from,
+        "to": [to_email],
+        "subject": subject,
+        "text": message,
+    }
+    if reply_to:
+        payload["reply_to"] = reply_to
+    resend.Emails.send(payload)
+
+
 @app.route("/api/emails", methods=["POST"])
 @limiter.limit("5 per minute")
 @limiter.limit("20 per hour")
@@ -93,15 +194,13 @@ def contact():
     except ValidationError as exc:
         errors = "; ".join(e["msg"] for e in exc.errors())
         return jsonify({"error": errors}), 400
-
     try:
-        resend.Emails.send({
-            "from": settings.notification_from,
-            "to": [settings.notification_to],
-            "reply_to": body.from_email,
-            "subject": f"[Contact] {body.subject}",
-            "text": f"From: {body.from_email}\n\n{body.message}",
-        })
+        _send_email(
+            to_email=settings.notification_to,
+            reply_to=body.from_email,
+            subject=f"[Contact] {body.subject}",
+            message=f"From: {body.from_email}\n\n{body.message}",
+        )
         log_event("email.relayed", message="Email relayed successfully")
         return jsonify({"status": "sent"}), 200
     except Exception as exc:
@@ -109,6 +208,56 @@ def contact():
             "email.relay_failed",
             message="Failed to relay email via Resend",
             exception_type=type(exc).__name__,
+        )
+        return jsonify({"error": "Failed to relay message. Please try again later."}), 502
+
+
+@app.route("/api/v1/emails", methods=["POST"])
+@_require_platform_jwt
+@limiter.limit("30 per minute", key_func=_platform_rate_limit_key)
+@limiter.limit("120 per hour", key_func=_platform_rate_limit_key)
+def platform_email():
+    try:
+        body = PlatformEmailRequest.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as exc:
+        errors = "; ".join(e["msg"] for e in exc.errors())
+        return jsonify({"error": errors}), 400
+
+    if _email_domain(body.to_email) not in settings.platform_email_allowed_domains:
+        return jsonify({"error": "Destination email is not permitted"}), 400
+
+    reply_to = body.reply_to or body.from_email
+    preamble = []
+    if body.from_email:
+        preamble.append(f"From: {body.from_email}")
+    if reply_to and reply_to != body.from_email:
+        preamble.append(f"Reply-To: {reply_to}")
+    if preamble:
+        preamble.append("")
+
+    try:
+        _send_email(
+            to_email=body.to_email,
+            reply_to=reply_to,
+            subject=f"[{body.message_type}] {body.subject}",
+            message="\n".join([*preamble, body.message]),
+        )
+        log_event(
+            "platform_email.relayed",
+            message="Protected platform email relayed successfully",
+            jwt_subject=g.platform_subject,
+            message_type=body.message_type,
+            to_email_domain=_email_domain(body.to_email),
+        )
+        return jsonify({"status": "sent"}), 200
+    except Exception as exc:
+        log_event(
+            "platform_email.relay_failed",
+            message="Failed to relay protected platform email via Resend",
+            exception_type=type(exc).__name__,
+            jwt_subject=getattr(g, "platform_subject", "unknown"),
+            message_type=body.message_type,
+            to_email_domain=_email_domain(body.to_email),
         )
         return jsonify({"error": "Failed to relay message. Please try again later."}), 502
 

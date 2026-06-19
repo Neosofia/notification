@@ -1,6 +1,6 @@
 # Notification Service
 
-Tiny Flask service that receives contact form submissions from the Neosofia corporate site and relays them to the configured inbox via [Resend](https://resend.com).
+Tiny Flask service that receives public contact form submissions from the Neosofia corporate site and protected platform relay requests, then relays them via [Resend](https://resend.com).
 
 ## API contract
 
@@ -14,6 +14,12 @@ GitHub Pages (static site)
     → Notification Service (Railway)
       → Resend API
         → inquiry@neosofia.tech
+
+Platform services
+  → POST /api/v1/emails + platform JWT
+    → Notification Service (Railway)
+      → Resend API
+        → allowlisted caller-selected inbox
 ```
 
 ## Environment variables
@@ -29,6 +35,11 @@ GitHub Pages (static site)
 | `LOG_LEVEL` | no | `info` | Log level for this service and Gunicorn; set to `debug`, `info`, `warning`, or `error` as needed. |
 | `RATELIMIT_STORAGE_URI` | no | `memory://` | Rate-limit backend. Defaults to in-memory, which is fine for a single-instance deployment. A shared backend (e.g. `redis://...`) will be required when scaling to multiple instances or regions — tracked as future work. |
 | `TRUSTED_PROXY_HOPS` | no | `1` | Number of trusted upstream reverse-proxy hops. Set to match your deployment topology: `1` for a single load balancer (Railway, single Traefik), `2` for CDN + LB (Cloudflare + ALB), `0` to disable proxy header trust entirely (direct exposure or Netbird mesh with no LB). |
+| `PLATFORM_JWT_ISSUER` | protected route | — | Required issuer for platform service JWTs. |
+| `PLATFORM_JWT_AUDIENCE` | protected route | — | Required audience for platform service JWTs. |
+| `PLATFORM_JWT_ALLOWED_SUBJECTS` | protected route | — | Comma-separated allowlist of service-token `sub` claims permitted to call `POST /api/v1/emails`. |
+| `PLATFORM_JWT_JWKS_JSON` | protected route | — | JWKS JSON payload containing trusted signing keys for offline JWT verification. |
+| `PLATFORM_EMAIL_ALLOWED_DOMAINS` | protected route | — | Comma-separated destination domain allowlist for caller-specified `to_email` values. |
 
 ## Testing
 
@@ -49,6 +60,11 @@ uv run pytest tests/integration/ -v --no-cov
 ```
 
 A valid-payload test may return `502` when Resend rejects the stub API key; that is expected and confirms the request reached the full stack.
+
+## Routes
+
+- `POST /api/emails` — unprotected contact-form relay. Always sends to `NOTIFICATION_TO` and prefixes the subject with `[Contact]`.
+- `POST /api/v1/emails` — protected platform relay. Requires a platform JWT, permits caller-selected destinations only when the recipient domain is allowlisted, and prefixes the subject with `[message_type]`.
 
 ## Local development
 
@@ -107,3 +123,4 @@ curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8005/api/emails \
 
 The service exposes a built-in health endpoint at `/health`. Railway can use this endpoint to verify container readiness and liveness when configuring service probes.
 
+See [`OPERATIONS.md`](./OPERATIONS.md) and [`SECURITY.md`](./SECURITY.md) for protected-route rollout guidance and security controls.
