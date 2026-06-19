@@ -3,7 +3,7 @@
 ## Public vs protected relay paths
 
 - `POST /api/emails` remains the unprotected corporate contact path. It is constrained to `NOTIFICATION_TO` and protected by CORS and existing IP-based rate limits.
-- `POST /api/v1/emails` is reserved for platform services. It requires a bearer JWT, validates that token offline against configured JWKS keys, and checks `iss`, `aud`, and allowlisted `sub` claims before relaying mail.
+- `POST /api/v1/emails` is reserved for platform services. It uses the shared `with_security` middleware so bearer-token validation comes from the SDK, while Cedar policy enforces the configured `iss` and allowlisted service `sub` values before relaying mail.
 
 ## Destination controls
 

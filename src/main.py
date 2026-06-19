@@ -1,10 +1,7 @@
-import json
-from collections.abc import Callable
-from functools import lru_cache, wraps
+from functools import wraps
 
-from authentication_in_the_middle.decorators import with_authentication
-from authentication_in_the_middle.logging import log_authentication_failed
-import jwt
+from authorization_in_the_middle import CedarEvaluator, FilesystemPolicySetSource
+from authorization_in_the_middle.security import with_security
 import resend
 from resend.http_client_requests import RequestsClient
 from flask import Flask, g, jsonify, request
@@ -17,6 +14,7 @@ from logenvelope.events import log_event
 from logenvelope.setup import setup_logging
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from src.authorization.entities import platform_email_relay_entities, platform_email_relay_resource_uid
 from src.config import settings
 from src.models import ContactRequest, PlatformEmailRequest
 from src.version import service_version
@@ -27,6 +25,17 @@ resend.api_key = settings.resend_api_key
 resend.default_http_client = RequestsClient(timeout=10)
 
 app = Flask(__name__)
+if settings.platform_jwt_verification_key is not None:
+    app.config.setdefault("JWT_PUBLIC_KEY", settings.platform_jwt_verification_key)
+if settings.platform_jwt_jwks_uri:
+    app.config.setdefault("JWT_JWKS_URI", settings.platform_jwt_jwks_uri)
+app.config.setdefault("JWT_AUDIENCE", settings.platform_jwt_audience)
+app.extensions["cedar_evaluator"] = CedarEvaluator(
+    policy_source=FilesystemPolicySetSource(
+        settings.authorization_policies_dir,
+        cache_ttl=settings.authorization_policy_cache_ttl,
+    )
+)
 
 # Reject request bodies larger than 16 KiB to prevent body-flood DoS.
 app.config["MAX_CONTENT_LENGTH"] = settings.max_content_length
@@ -95,107 +104,37 @@ def _email_domain(address: str) -> str:
     return address.rsplit("@", 1)[1].lower()
 
 
-@lru_cache
-def _platform_jwk_keys() -> dict[str, object]:
-    if not settings.platform_jwt_jwks_json:
-        return {}
-
-    jwks = json.loads(settings.platform_jwt_jwks_json)
-    keys: dict[str, object] = {}
-    for jwk in jwks.get("keys", []):
-        kid = jwk.get("kid")
-        if isinstance(kid, str) and kid:
-            keys[kid] = jwt.PyJWK.from_dict(jwk).key
-    return keys
-
-
 def _platform_jwt_configured() -> bool:
     return bool(
         settings.platform_jwt_issuer
         and settings.platform_jwt_audience
         and settings.platform_jwt_allowed_subjects
         and settings.platform_email_allowed_domains
-        and _platform_jwk_keys()
+        and (settings.platform_jwt_verification_key or settings.platform_jwt_jwks_uri)
     )
 
 
-def _platform_signing_kid(token: str) -> str:
-    header = jwt.get_unverified_header(token)
-    kid = header.get("kid")
-    if not isinstance(kid, str) or not kid:
-        raise jwt.InvalidTokenError("JWT is missing a kid header")
-
-    if _platform_jwk_keys().get(kid) is None:
-        raise jwt.InvalidTokenError("JWT signing key is not trusted")
-    return kid
-
-
-@lru_cache(maxsize=16)
-def _platform_authenticated_view(view: Callable, kid: str | None):
-    public_key = _platform_jwk_keys().get(kid) if kid else None
-    return with_authentication(
-        public_key=public_key,
-        audience=settings.platform_jwt_audience,
-        enforce_active_actor=False,
-    )(view)
-
-
 def _platform_rate_limit_key() -> str:
-    return getattr(g, "platform_subject", get_remote_address())
+    claims = getattr(g, "jwt_claims", {}) or {}
+    subject = claims.get("sub")
+    if isinstance(subject, str) and subject:
+        return subject
+    return get_remote_address()
 
 
-def _authorize_platform_subject(view):
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        claims = getattr(g, "jwt_claims", {})
-        issuer = claims.get("iss")
-        if issuer != settings.platform_jwt_issuer:
-            log_authentication_failed(
-                reason="issuer_invalid",
-                status_code=401,
-                route=view.__name__,
-                error_type="InvalidIssuerError",
-            )
-            return jsonify({"error": "unauthenticated", "detail": "Invalid token"}), 401
-        subject = claims.get("sub")
-        if not isinstance(subject, str) or subject not in settings.platform_jwt_allowed_subjects:
-            return jsonify({"error": "forbidden", "detail": "JWT subject is not permitted"}), 403
-        g.platform_subject = subject
-        g.platform_claims = claims
-        return view(*args, **kwargs)
-
-    return wrapped
+def _platform_security_context():
+    claims = getattr(g, "jwt_claims", {}) or {}
+    return {"issuer": str(claims.get("iss") or "")}
 
 
-def _authenticate_platform_request(view):
+def _require_platform_relay_config(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not _platform_jwt_configured():
             return jsonify({"error": "Protected relay is not configured"}), 503
-
-        platform_kid = None
-        authorization = request.headers.get("Authorization", "")
-        if authorization.startswith("Bearer "):
-            token = authorization[7:].strip()
-            try:
-                platform_kid = _platform_signing_kid(token)
-            except jwt.InvalidTokenError as exc:
-                log_authentication_failed(
-                    reason="token_invalid",
-                    status_code=401,
-                    route=view.__name__,
-                    error_type=type(exc).__name__,
-                )
-                return jsonify({"error": "unauthenticated", "detail": "Invalid token"}), 401
-
-        authenticated_view = _platform_authenticated_view(view, platform_kid)
-        return authenticated_view(*args, **kwargs)
+        return view(*args, **kwargs)
 
     return wrapped
-
-
-def _require_platform_jwt(view):
-    return _authenticate_platform_request(_authorize_platform_subject(view))
 
 
 def _send_email(to_email: str, subject: str, message: str, reply_to: str | None = None):
@@ -238,7 +177,14 @@ def contact():
 
 
 @app.route("/api/v1/emails", methods=["POST"])
-@_require_platform_jwt
+@_require_platform_relay_config
+@with_security(
+    action='Action::"platform-email:send"',
+    resource_fn=platform_email_relay_resource_uid,
+    entities_fn=platform_email_relay_entities,
+    context_fn=_platform_security_context,
+    enforce_active_actor=False,
+)
 @limiter.limit("30 per minute", key_func=_platform_rate_limit_key)
 @limiter.limit("120 per hour", key_func=_platform_rate_limit_key)
 def platform_email():
@@ -270,7 +216,7 @@ def platform_email():
         log_event(
             "platform_email.relayed",
             message="Protected platform email relayed successfully",
-            jwt_subject=g.platform_subject,
+            jwt_subject=str((getattr(g, "jwt_claims", {}) or {}).get("sub", "unknown")),
             message_type=body.message_type,
             to_email_domain=_email_domain(body.to_email),
         )
@@ -280,7 +226,7 @@ def platform_email():
             "platform_email.relay_failed",
             message="Failed to relay protected platform email via Resend",
             exception_type=type(exc).__name__,
-            jwt_subject=getattr(g, "platform_subject", "unknown"),
+            jwt_subject=str((getattr(g, "jwt_claims", {}) or {}).get("sub", "unknown")),
             message_type=body.message_type,
             to_email_domain=_email_domain(body.to_email),
         )

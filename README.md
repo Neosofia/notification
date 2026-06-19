@@ -37,8 +37,8 @@ Platform services
 | `TRUSTED_PROXY_HOPS` | no | `1` | Number of trusted upstream reverse-proxy hops. Set to match your deployment topology: `1` for a single load balancer (Railway, single Traefik), `2` for CDN + LB (Cloudflare + ALB), `0` to disable proxy header trust entirely (direct exposure or Netbird mesh with no LB). |
 | `PLATFORM_JWT_ISSUER` | protected route | — | Required issuer for platform service JWTs. |
 | `PLATFORM_JWT_AUDIENCE` | protected route | — | Required audience for platform service JWTs. |
-| `PLATFORM_JWT_ALLOWED_SUBJECTS` | protected route | — | Comma-separated allowlist of service-token `sub` claims permitted to call `POST /api/v1/emails`. |
-| `PLATFORM_JWT_JWKS_JSON` | protected route | — | JWKS JSON payload containing trusted signing keys for offline JWT verification. |
+| `PLATFORM_JWT_ALLOWED_SUBJECTS` | protected route | — | Comma-separated allowlist of service-token `sub` claims permitted by the protected-route Cedar policy. |
+| `PLATFORM_JWT_JWKS_JSON` | protected route | — | JWKS JSON payload containing the trusted signing key used by the protected route's shared auth middleware. |
 | `PLATFORM_EMAIL_ALLOWED_DOMAINS` | protected route | — | Comma-separated destination domain allowlist for caller-specified `to_email` values. |
 
 ## Testing

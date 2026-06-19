@@ -64,6 +64,7 @@ def build_platform_token(private_key, subject="care-episode", **claims):
         "iss": os.environ["PLATFORM_JWT_ISSUER"],
         "aud": os.environ["PLATFORM_JWT_AUDIENCE"],
         "sub": subject,
+        "token_type": "service",
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=5)).timestamp()),
         **claims,
@@ -248,15 +249,15 @@ def test_platform_email_rejects_invalid_token(client):
 def test_platform_email_rejects_wrong_issuer(client, platform_private_key):
     token = build_platform_token(platform_private_key, iss="https://wrong.example")
     resp = post_platform_email(client, VALID_PLATFORM_PAYLOAD, token=token)
-    assert resp.status_code == 401
-    assert resp.get_json() == {"error": "unauthenticated", "detail": "Invalid token"}
+    assert resp.status_code == 403
+    assert resp.get_json() == {"error": "forbidden"}
 
 
 def test_platform_email_rejects_unpermitted_subject(client, platform_private_key):
     token = build_platform_token(platform_private_key, subject="frontend-app")
     resp = post_platform_email(client, VALID_PLATFORM_PAYLOAD, token=token)
     assert resp.status_code == 403
-    assert resp.get_json() == {"error": "forbidden", "detail": "JWT subject is not permitted"}
+    assert resp.get_json() == {"error": "forbidden"}
 
 
 def test_platform_email_rejects_disallowed_destination(client, platform_private_key):

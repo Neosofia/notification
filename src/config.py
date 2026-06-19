@@ -1,6 +1,8 @@
 import json
+from pathlib import Path
 from typing import List
 
+import jwt
 from pydantic import EmailStr, Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,6 +18,8 @@ class Settings(BaseSettings):
     cors_origins_raw: str = Field(validation_alias="cors_origins")
     log_level: str = Field("info")
     env: str = "production"
+    authorization_policies_dir: Path = Path("policies")
+    authorization_policy_cache_ttl: int = 60
     rate_limit_storage_uri: str = "memory://"
     trusted_proxy_hops: int = Field(1, ge=0)
     max_content_length: int = 16_384
@@ -27,6 +31,8 @@ class Settings(BaseSettings):
     platform_jwt_issuer: str | None = None
     platform_jwt_audience: str | None = None
     platform_jwt_allowed_subjects_raw: str = Field("", validation_alias="platform_jwt_allowed_subjects")
+    platform_jwt_public_key: str | None = None
+    platform_jwt_jwks_uri: str | None = None
     platform_jwt_jwks_json: str | None = None
     platform_email_allowed_domains_raw: str = Field("", validation_alias="platform_email_allowed_domains")
 
@@ -72,6 +78,18 @@ class Settings(BaseSettings):
     @property
     def platform_email_allowed_domains(self) -> frozenset[str]:
         return frozenset(domain.lower() for domain in _split_csv(self.platform_email_allowed_domains_raw))
+
+    @property
+    def platform_jwt_verification_key(self):
+        if self.platform_jwt_public_key:
+            return self.platform_jwt_public_key
+        if not self.platform_jwt_jwks_json:
+            return None
+        payload = json.loads(self.platform_jwt_jwks_json)
+        keys = payload.get("keys", [])
+        if len(keys) != 1:
+            return None
+        return jwt.PyJWK.from_dict(keys[0]).key
 
 
 settings = Settings()  # type: ignore[call-arg]

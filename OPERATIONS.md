@@ -11,10 +11,10 @@ Set all of the following variables before enabling `POST /api/v1/emails`:
 
 | Variable | Purpose |
 |---|---|
-| `PLATFORM_JWT_ISSUER` | Exact `iss` claim required on service tokens. |
+| `PLATFORM_JWT_ISSUER` | Exact `iss` claim required by the protected-route Cedar policy. |
 | `PLATFORM_JWT_AUDIENCE` | Exact `aud` claim required on service tokens. |
 | `PLATFORM_JWT_ALLOWED_SUBJECTS` | Comma-separated allowlist of service-token `sub` values permitted to call the protected relay. |
-| `PLATFORM_JWT_JWKS_JSON` | JWKS document used for offline JWT verification. Rotate this whenever Authentication rotates service-token signing keys. |
+| `PLATFORM_JWT_JWKS_JSON` | JWKS document used by the shared auth middleware for offline JWT verification. Rotate this whenever Authentication rotates service-token signing keys. |
 | `PLATFORM_EMAIL_ALLOWED_DOMAINS` | Comma-separated allowlist of recipient domains permitted in `to_email`. |
 
 ## Destination policy
@@ -26,5 +26,5 @@ This keeps the protected route from becoming a general-purpose open relay while 
 ## Rollout notes
 
 - Keep the public corporate site on `POST /api/emails`; that route is intentionally unchanged.
-- Platform services should mint service JWTs from Authentication and call `POST /api/v1/emails`.
+- Platform services should mint service JWTs from Authentication and call `POST /api/v1/emails`; route authz is enforced through `with_security` + Cedar policy.
 - Protected-route logs include the authenticated subject, `message_type`, and destination domain only; routine logs do not include full message bodies.
