@@ -235,7 +235,7 @@ def platform_email():
     preamble = []
     if body.from_email:
         preamble.append(f"From: {body.from_email}")
-    if reply_to and reply_to != body.from_email:
+    if body.from_email and reply_to and reply_to != body.from_email:
         preamble.append(f"Reply-To: {reply_to}")
     if preamble:
         preamble.append("")

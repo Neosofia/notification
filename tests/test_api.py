@@ -10,6 +10,7 @@ Covers:
 """
 
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from importlib.metadata import version
 from pathlib import Path
@@ -60,8 +61,8 @@ def post_platform_email(client, payload, token=None):
 def build_platform_token(private_key, subject="care-episode", **claims):
     now = datetime.now(UTC)
     payload = {
-        "iss": "https://auth.test.neosofia",
-        "aud": "notification",
+        "iss": os.environ["PLATFORM_JWT_ISSUER"],
+        "aud": os.environ["PLATFORM_JWT_AUDIENCE"],
         "sub": subject,
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=5)).timestamp()),
