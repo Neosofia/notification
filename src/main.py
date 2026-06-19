@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from functools import lru_cache, wraps
 
 from authentication_in_the_middle.decorators import with_authentication
@@ -118,16 +119,25 @@ def _platform_jwt_configured() -> bool:
     )
 
 
-def _platform_signing_key(token: str) -> object:
+def _platform_signing_kid(token: str) -> str:
     header = jwt.get_unverified_header(token)
     kid = header.get("kid")
     if not isinstance(kid, str) or not kid:
         raise jwt.InvalidTokenError("JWT is missing a kid header")
 
-    key = _platform_jwk_keys().get(kid)
-    if key is None:
+    if _platform_jwk_keys().get(kid) is None:
         raise jwt.InvalidTokenError("JWT signing key is not trusted")
-    return key
+    return kid
+
+
+@lru_cache(maxsize=16)
+def _platform_authenticated_view(view: Callable, kid: str | None):
+    public_key = _platform_jwk_keys().get(kid) if kid else None
+    return with_authentication(
+        public_key=public_key,
+        audience=settings.platform_jwt_audience,
+        enforce_active_actor=False,
+    )(view)
 
 
 def _platform_rate_limit_key() -> str:
@@ -163,12 +173,12 @@ def _authenticate_platform_request(view):
         if not _platform_jwt_configured():
             return jsonify({"error": "Protected relay is not configured"}), 503
 
-        signing_key = None
+        platform_kid = None
         authorization = request.headers.get("Authorization", "")
         if authorization.startswith("Bearer "):
             token = authorization[7:].strip()
             try:
-                signing_key = _platform_signing_key(token)
+                platform_kid = _platform_signing_kid(token)
             except jwt.InvalidTokenError as exc:
                 log_authentication_failed(
                     reason="token_invalid",
@@ -178,11 +188,7 @@ def _authenticate_platform_request(view):
                 )
                 return jsonify({"error": "unauthenticated", "detail": "Invalid token"}), 401
 
-        authenticated_view = with_authentication(
-            public_key=signing_key,
-            audience=settings.platform_jwt_audience,
-            enforce_active_actor=False,
-        )(view)
+        authenticated_view = _platform_authenticated_view(view, platform_kid)
         return authenticated_view(*args, **kwargs)
 
     return wrapped
