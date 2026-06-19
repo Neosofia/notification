@@ -83,12 +83,15 @@ class Settings(BaseSettings):
     def platform_jwt_verification_key(self):
         if self.platform_jwt_public_key:
             return self.platform_jwt_public_key
-        if not self.platform_jwt_jwks_json:
+        if self.platform_jwt_jwks_uri or not self.platform_jwt_jwks_json:
             return None
         payload = json.loads(self.platform_jwt_jwks_json)
         keys = payload.get("keys", [])
         if len(keys) != 1:
-            return None
+            raise ValueError(
+                "PLATFORM_JWT_JWKS_JSON must contain exactly one key when "
+                "PLATFORM_JWT_PUBLIC_KEY is unset"
+            )
         return jwt.PyJWK.from_dict(keys[0]).key
 
 

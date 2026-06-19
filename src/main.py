@@ -127,6 +127,11 @@ def _platform_security_context():
     return {"issuer": str(claims.get("iss") or "")}
 
 
+def _platform_subject() -> str:
+    claims = getattr(g, "jwt_claims", {}) or {}
+    return str(claims.get("sub", "unknown"))
+
+
 def _require_platform_relay_config(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
@@ -216,7 +221,7 @@ def platform_email():
         log_event(
             "platform_email.relayed",
             message="Protected platform email relayed successfully",
-            jwt_subject=str((getattr(g, "jwt_claims", {}) or {}).get("sub", "unknown")),
+            jwt_subject=_platform_subject(),
             message_type=body.message_type,
             to_email_domain=_email_domain(body.to_email),
         )
@@ -226,7 +231,7 @@ def platform_email():
             "platform_email.relay_failed",
             message="Failed to relay protected platform email via Resend",
             exception_type=type(exc).__name__,
-            jwt_subject=str((getattr(g, "jwt_claims", {}) or {}).get("sub", "unknown")),
+            jwt_subject=_platform_subject(),
             message_type=body.message_type,
             to_email_domain=_email_domain(body.to_email),
         )
