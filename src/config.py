@@ -90,7 +90,7 @@ class Settings(BaseSettings):
         if len(keys) != 1:
             raise ValueError(
                 "PLATFORM_JWT_JWKS_JSON must contain exactly one key when "
-                "PLATFORM_JWT_PUBLIC_KEY is unset"
+                "PLATFORM_JWT_PUBLIC_KEY and PLATFORM_JWT_JWKS_URI are unset"
             )
         return jwt.PyJWK.from_dict(keys[0]).key
 
