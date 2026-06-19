@@ -163,7 +163,7 @@ def _authenticate_platform_request(view):
         if not _platform_jwt_configured():
             return jsonify({"error": "Protected relay is not configured"}), 503
 
-        signing_key = ""
+        signing_key = None
         authorization = request.headers.get("Authorization", "")
         if authorization.startswith("Bearer "):
             token = authorization[7:].strip()

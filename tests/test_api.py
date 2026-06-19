@@ -233,9 +233,10 @@ def test_oversized_body_returns_413(client):
 
 def test_platform_email_requires_bearer_token(client):
     resp = post_platform_email(client, VALID_PLATFORM_PAYLOAD)
+    body = resp.get_json()
     assert resp.status_code == 401
-    assert resp.get_json()["error"] == "unauthenticated"
-    assert resp.get_json()["detail"].startswith("Missing or invalid")
+    assert body["error"] == "unauthenticated"
+    assert body["detail"].startswith("Missing or invalid")
 
 
 def test_platform_email_rejects_invalid_token(client):

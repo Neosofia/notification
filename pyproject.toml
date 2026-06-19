@@ -10,7 +10,7 @@ requires-python = ">=3.12"
 authors = [{ name = "Neosofia", email = "platform@neosofia.tech" }]
 
 dependencies = [
-    "authentication-in-the-middle>=0.9.8,<1.0.0",
+    "authentication-in-the-middle>=0.9.8,<0.10.0",
     "flask>=3.0.0",
     "flask-cors>=4.0.0",
     "flask-limiter>=3.5.0",
